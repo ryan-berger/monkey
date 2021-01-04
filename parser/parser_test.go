@@ -8,39 +8,17 @@ import (
 	"github.com/ryan-berger/monkey/lexer/naive"
 )
 
-func TestLetStatements(t *testing.T) {
-	input := `
-let x = 5;
-let y = 10;
-let foobar = 1212;
-`
-	l := naive.NewLexer(input)
-	p := New(l)
-
-	program := p.ParseProgram()
-
-	if program == nil {
-		t.Fatal("ParseProgram() returned nil")
+func checkParserErrors(t *testing.T, p *Parser) {
+	errors := p.Errors()
+	if len(errors) == 0 {
+		return
 	}
 
-	if len(program.Statements) != 3 {
-		t.Fatalf("Expected 3 statements, received %d", len(program.Statements))
+	t.Errorf("parser has %d errors", len(errors))
+	for _, msg := range errors {
+		t.Errorf("parser error: %q", msg)
 	}
-
-	tests := []struct {
-		expectedIdentifier string
-	}{
-		{"x"},
-		{"y"},
-		{"foobar"},
-	}
-
-	for i, tt := range tests {
-		stmt := program.Statements[i]
-		if !testLetStatement(t, stmt, tt.expectedIdentifier) {
-			return
-		}
-	}
+	t.FailNow()
 }
 
 func testLetStatement(t *testing.T, s ast.Statement, name string) bool {
@@ -68,62 +46,97 @@ func testLetStatement(t *testing.T, s ast.Statement, name string) bool {
 	return true
 }
 
-func TestLetStatementFail(t *testing.T) {
-	input := `
-let x  5;
-let = 10;
-let foobar 1212;
-`
-	l := naive.NewLexer(input)
-	p := New(l)
+func testBooleanLiteral(t *testing.T, exp ast.Expression, value bool) bool {
+	bo, ok := exp.(*ast.BooleanLiteral)
+	if !ok {
+		t.Errorf("exp not *ast.Boolean. got=%T", exp)
+		return false
+	}
 
-	p.ParseProgram()
-	checkParserErrors(t, p)
+	if bo.Value != value {
+		t.Errorf("bo.Value not %t. got=%t", value, bo.Value)
+		return false
+	}
+
+	if bo.TokenLiteral() != fmt.Sprintf("%t", value) {
+		t.Errorf("bo.TokenLiteral not %t. got=%s",
+			value, bo.TokenLiteral())
+		return false
+	}
+
+	return true
 }
 
-func checkParserErrors(t *testing.T, p *Parser) {
-	errors := p.Errors()
-	if len(errors) == 0 {
-		return
+func TestLetStatements(t *testing.T) {
+	tests := []struct {
+		input              string
+		expectedIdentifier string
+		expectedValue      interface{}
+	}{
+		{"let x = 5;", "x", 5},
+		{"let y = true;", "y", true},
+		{"let foobar = y;", "foobar", "y"},
 	}
 
-	t.Errorf("parser has %d errors", len(errors))
-	for _, msg := range errors {
-		t.Errorf("parser error %q", msg)
-	}
-	t.FailNow()
+	for _, tt := range tests {
+		l := naive.NewLexer(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
 
+		if len(program.Statements) != 1 {
+			t.Fatalf("program.Statements does not contain 1 statements. got=%d",
+				len(program.Statements))
+		}
+
+		stmt := program.Statements[0]
+		if !testLetStatement(t, stmt, tt.expectedIdentifier) {
+			return
+		}
+
+		val := stmt.(*ast.LetStatement).Value
+		if !testLiteralExpression(t, val, tt.expectedValue) {
+			return
+		}
+	}
 }
 
 func TestReturnStatements(t *testing.T) {
-	input := `
-return 5;
-return 10;
-return 22;
-`
-	l := naive.NewLexer(input)
-	p := New(l)
-
-	program := p.ParseProgram()
-	checkParserErrors(t, p)
-
-	if len(program.Statements) != 3 {
-		t.Fatalf("program.Statements does not contain 3 statements. got=%d", len(program.Statements))
+	tests := []struct {
+		input         string
+		expectedValue interface{}
+	}{
+		{"return 5;", 5},
+		{"return true;", true},
+		{"return foobar;", "foobar"},
 	}
 
-	for _, stmt := range program.Statements {
+	for _, tt := range tests {
+		l := naive.NewLexer(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		if len(program.Statements) != 1 {
+			t.Fatalf("program.Statements does not contain 1 statements. got=%d",
+				len(program.Statements))
+		}
+
+		stmt := program.Statements[0]
 		returnStmt, ok := stmt.(*ast.ReturnStatement)
 		if !ok {
-			t.Errorf("stmt not *ast.ReturnStatement. got=%T", stmt)
-			continue
+			t.Fatalf("stmt not *ast.ReturnStatement. got=%T", stmt)
 		}
-
 		if returnStmt.TokenLiteral() != "return" {
-			t.Errorf("returnStmt.TokenLiteral not 'return', got %q", returnStmt.TokenLiteral())
+			t.Fatalf("returnStmt.TokenLiteral not 'return', got %q",
+				returnStmt.TokenLiteral())
 		}
-
+		if testLiteralExpression(t, returnStmt.ReturnValue, tt.expectedValue) {
+			return
+		}
 	}
 }
+
 
 func TestIdentifierExpression(t *testing.T) {
 	input := `foobar;`
@@ -277,6 +290,8 @@ func testLiteralExpression(t *testing.T, exp ast.Expression, expected interface{
 		return testIntegerLiteral(t, exp, v)
 	case string:
 		return testIdentifier(t, exp, v)
+	case bool:
+		return testBooleanLiteral(t, exp, v)
 	default:
 		t.Errorf("type of exp not handled. got=%T", exp)
 		return false
@@ -677,4 +692,24 @@ func TestCallExpressionParsing(t *testing.T) {
 	testLiteralExpression(t, exp.Arguments[0], 1)
 	testInfixExpression(t, exp.Arguments[1], 2, "*", 3)
 	testInfixExpression(t, exp.Arguments[2], 4, "+", 5)
+}
+
+func TestStringLiteralExpression (t *testing.T) {
+	input := `"hello world";`
+
+	l := naive.NewLexer(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExpressionStatement)
+	literal, ok := stmt.Expression.(*ast.StringLiteral)
+	if !ok {
+		t.Fatalf("exp not *ast.StringLiteral. got=%T", stmt.Expression)
+	}
+
+	if literal.Value != "hello world" {
+		t.Errorf("literal.Value not %q. got=%q", "hello world", literal.Value)
+	}
+
 }

@@ -63,6 +63,8 @@ func New(lexer lexer.Lexer) *Parser {
 	p.registerPrefix(token.FALSE, p.parseBoolean)
 	p.registerPrefix(token.IF, p.parseIfExpression)
 	p.registerPrefix(token.FUNCTION, p.parseFunctionLiteral)
+	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
+	p.registerPrefix(token.STRING, p.parseStringLiteral)
 
 	p.infixParserFns = make(map[token.Type]infixParserFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -121,7 +123,11 @@ func (p *Parser) parseStatement() ast.Statement {
 
 func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 	stmt := &ast.ReturnStatement{Token: p.curToken}
+
 	p.nextToken()
+
+	stmt.ReturnValue = p.parseExpression(LOWEST)
+
 	for !p.curTokenIs(token.SEMICOLON) {
 		p.nextToken()
 	}
@@ -140,6 +146,10 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
+
+	p.nextToken()
+
+	stmt.Value = p.parseExpression(LOWEST)
 
 	if !p.curTokenIs(token.SEMICOLON) {
 		p.nextToken()
@@ -406,4 +416,8 @@ func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	exp := &ast.CallExpression{Token: p.curToken, Function: function}
 	exp.Arguments = p.parseCallArguments()
 	return exp
+}
+
+func (p *Parser) parseStringLiteral() ast.Expression {
+	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }

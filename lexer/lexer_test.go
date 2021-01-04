@@ -53,7 +53,9 @@ if (5 < 10) {
 }
 
 10 == 10;
-10 != 9;`,
+10 != 9;
+"foobar"
+"foo bar"`,
 		expectedTokens: []tokenTest{
 			{token.LET, "let"},
 			{token.IDENT, "five"},
@@ -126,9 +128,9 @@ if (5 < 10) {
 			{token.NEQ, "!="},
 			{token.INT, "9"},
 			{token.SEMICOLON, ";"},
+			{token.STRING, "foobar"},
+			{token.STRING, "foo bar"},
 			{token.EOF, ""},
-
-
 		},
 	},
 }

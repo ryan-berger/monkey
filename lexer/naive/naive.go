@@ -17,6 +17,9 @@ func (l *Lexer) NextToken() token.Token {
 	var t token.Token
 	l.skipWhitespace()
 	switch l.ch {
+	case '"':
+		t.Type = token.STRING
+		t.Literal = l.readString()
 	case '=':
 		if l.peekChar() == '=' {
 			ch := l.ch

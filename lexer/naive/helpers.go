@@ -47,3 +47,14 @@ func (l *Lexer) peekChar() byte {
 	}
 	return l.input[l.readPosition]
 }
+
+func (l *Lexer) readString() string {
+	pos := l.position + 1
+	for {
+		l.readChar()
+		if l.ch == '"' || l.ch == 0 {
+			break
+		}
+	}
+	return l.input[pos:l.position]
+}
